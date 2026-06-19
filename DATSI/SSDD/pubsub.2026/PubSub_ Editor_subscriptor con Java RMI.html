@@ -1,0 +1,1463 @@
+
+<!-- saved from url=(0109)https://moodle.upm.es/titulaciones/oficiales/pluginfile.php/14031488/mod_resource/content/13/pubsub-2026.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<title>PubSub: Editor/subscriptor con Java RMI</title>
+</head>
+<body>
+<h1>PubSub: Editor/subscriptor con Java RMI</h1>
+Se trata de un proyecto práctico de desarrollo <b>en grupos de 2 personas</b>, aunque también se puede realizar de manera individual,
+cuyo plazo de entrega se extiende hasta el final del <b>22 de junio</b> en la convocatoria ordinaria y hasta el final del <b>14 de julio</b> en la extraordinaria.
+<p>
+La práctica se puede desarrollar en cualquier sistema que tenga instalado el entorno de desarrollo y ejecución de Java. El material de apoyo de la práctica contiene una serie de <i>scripts</i> que facilitan su compilación y ejecución en un equipo Linux, lo que permite trabajar incluso sin la utilización de un IDE si lo considera oportuno.
+</p><p>Para realizar la práctica, puede usarse una máquina personal, un escritorio virtual de la UPM o cualquiera del conjunto de 4 máquinas asociadas al nombre <tt>triqui.fi.upm.es.</tt> gestionadas por el centro de cálculo de la escuela. En cualquier caso, como se explicará más adelante, hay que entregar la práctica en <tt>triqui.fi.upm.es</tt>, donde se evaluará, y, por tanto, <b>debe compilar correctamente en ese equipo</b>. Si tiene algún problema al respecto, contacte con el coordinador de la práctica.
+
+</p><h2>Objetivo de la práctica</h2>
+Se plantea implementar un sistema editor/subscriptor, similar a los estudiados en la parte teórica de la asignatura, con las siguientes características:
+<ul>
+<li>Basado en un proceso que realiza el rol de <i>broker</i>.
+</li><li>Con un esquema <i>pull</i>, tal que los nodos que ejercen el rol de subscriptor deben recoger del  <i>broker</i> los eventos que les corresponden, siendo necesario, por tanto, almacenarlos en el <i>broker</i>.
+</li><li>Se trata de un esquema con un filtro basado en temas, tal que cada evento está formado por el tema y una colección de parejas clave-valor, siendo la clave una cadena de caracteres y el valor un objeto.
+</li><li>Permite la creación y destrucción dinámica de temas, siendo notificados de estos <i>metaeventos</i> todos los subscriptores del sistema.
+</li><li>Los temas se gestionan de forma jerárquica, como nombres de ruta de ficheros que usan el carácter <tt>/</tt> como separador, pudiéndose realizar múltiples subscripciones con una única operación mediante el uso de patrones de tipo <tt>glob</tt>.
+</li><li>Además del clásico esquema de interacción editor/subscriptor, ofrece un modo de operación adicional de tipo cola de mensajes.
+</li></ul>
+<h2>Organización del código de la práctica</h2>
+Revisemos los distintos directorios:
+<ul>
+<li><tt>ejemplo_JavaRMI</tt>: Se trata de ejemplos básicos de Java RMI que usan la misma estructura de directorios que el software de la práctica: un directorio para el servidor (en la práctica, el <i>broker</i>), otro para el cliente y un tercero para almacenar las definiciones comunes a ambos componentes correspondientes a la interfaz del servicio, que debe estar presente tanto en el equipo cliente como en el servidor. Asimismo, incluye una colección de <i>scripts</i> para la compilación y ejecución del ejemplo, que son iguales que los que se usan en la práctica. Concretamente, se presentan tres ejemplos:
+<ul>
+<li><tt>1_eco</tt>: un cliente-servidor básico.
+</li><li><tt>2_chat</tt>: invocación de métodos del cliente desde el servidor (<i>callback</i>). En la práctica, se usa ese modo de operación para la entrega a los subscriptores de las notificaciones de creación y destrucción de temas.
+</li><li><tt>3_banco</tt>: uso del patrón factoría remota. En la práctica, se usa este patrón para la inicialización de subscriptores.
+</li></ul>
+	</li><li><tt>common</tt> (paquete <tt>pubsub</tt>): donde está definida la interfaz de servicio, <b>que ya está completamente programada y no se debe modificar</b>. Incluye cuatro ficheros:
+<ul>
+<li><tt>PubSub.java</tt>: define la interfaz remota general del servicio.
+</li><li><tt>Subscriber.java</tt>: define la interfaz remota específica para los servicios de los subscriptores.
+</li><li><tt>SubscriberCallback.java</tt>: define la interfaz remota para las notificaciones de tipo <i>callback</i> a los subscriptores correspondientes a la creación y destrucción de temas.
+</li><li><tt>Event.java</tt>: clase que define un evento.
+</li></ul>
+</li><li><tt>broker_node</tt> (paquete <tt>broker</tt>): Contiene la funcionalidad del <i>broker</i>. <b>Debe completar estos ficheros</b>:
+<ul>
+<li><b><tt>PubSubImpl.java</tt></b>: Implementación de la interfaz remota general de servicio.
+</li><li><b><tt>SubscriberImpl.java</tt></b>: Implementación de la interfaz remota específica para los subscriptores.
+</li><li><b><tt>Server.java</tt></b>: Clase estática que encapsula el alta del servicio en el <i>RMI Registry</i>.
+</li><li><b><tt>Topic.java</tt></b>: Clase que gestiona un tema.
+</li></ul>
+</li><li><tt>client_node/src/pubsubcln</tt>. <b>Debe completar este fichero</b>:
+<ul>
+<li><b><tt>Client.java</tt></b>: Clase estática que encapsula la localización del servicio en el <i>RMI Registry</i>.
+</li></ul>
+</li><li><tt>client_node/src/pubsubapps</tt>: Contiene programas que usan la funcionalidad del sistema desarrollado, que serán presentados más adelante. Para realizar las pruebas del sistema, en el enunciado se usará el siguiente programa:
+<ul>
+<li><tt>Test.java</tt>: programa interactivo que permite probar la práctica.
+</li></ul>
+</li></ul>
+Téngase en cuenta que la práctica <b>está diseñada para no permitir la definición de nuevas clases</b>, estando todas ya presentes, aunque prácticamente vacías en la mayoría de los casos, en el material de apoyo. Evidentemente, sí se pueden añadir nuevos métodos y atributos a las clases del <i>broker</i>.
+<p>
+Es importante resaltar que en <b>el material de apoyo existen varios enlaces simbólicos al fichero <tt>common.jar</tt> que se requieren para poder compartir ficheros entre los distintos directorios. Si copia el material de apoyo directamente, puede perderlos y no funcionará correctamente</b>. En ese caso, puede volver a crearlos o descargarse nuevamente el material de apoyo en otro directorio y copiar los ficheros que haya modificado.
+</p><h2>API ofrecida a las aplicaciones</h2>
+En esta sección, se describen las operaciones proporcionadas
+a las aplicaciones. Vamos a distinguir dos partes: métodos remotos correspondientes al servicio general y métodos remotos asociados a un subscriptor.
+<p>
+A continuación, se describen los métodos remotos del servicio general definidos en <tt>PubSubImpl.java</tt> que forman parte de la API proporcionada a las aplicaciones:
+</p><ul>
+<li>
+Obtiene el número de versión del servicio (para depuración).
+<pre>int getVersion() throws RemoteException;
+</pre>
+</li><li>
+Crea un tema devolviendo falso si ya existe.
+<pre>boolean createTopic(String topic) throws RemoteException;
+</pre>
+</li><li>
+Devuelve la lista de temas existentes en el sistema.
+<pre>Collection&lt;String&gt; topicList() throws RemoteException;
+</pre>
+</li><li>
+Publica un evento devolviendo falso si no existe el tema. 
+<pre>boolean publish(Event ev) throws RemoteException;
+</pre>
+</li><li>
+Consume un evento del tema especificado usando el método de interacción alternativo de tipo cola de mensajes, devolviendo nulo si no hay eventos y generando la excepción <tt>NoSuchObjectException</tt> si no existe el tema.
+<pre>Event consumeEvent(String topic) throws RemoteException;
+</pre>
+</li><li>
+Alta de un subscriptor, especificando como parámetro el objeto de tipo <i>callback</i> que se usará para notificarle la creación y destrucción de temas. Un valor nulo en ese parámetro indica que el subscriptor no está interesado en ese tipo de notificaciones.
+<pre>Subscriber initSubscriber(SubscriberCallback c) throws RemoteException;
+</pre>
+</li><li>
+Devuelve la lista de subscriptores dados de alta en el sistema.
+<pre>Collection&lt;Subscriber&gt; subscriberList() throws RemoteException;
+</pre>
+</li><li>
+Devuelve la lista de subscriptores asociados a ese tema, devolviendo un nulo si este no existe.
+<pre>Collection&lt;Subscriber&gt; subscriberListByTopic(String topic) throws RemoteException;
+</pre>
+</li><li>
+Elimina un tema en el sistema, devolviendo falso si no existe.
+<pre>boolean deleteTopic(String topic) throws RemoteException;
+</pre>
+</li></ul>
+A continuación, se describen los métodos remotos asociados a un subscriptor definidos en <tt>SubscriberImpl.java</tt> que forman parte de la API proporcionada a las aplicaciones:
+<ul>
+<li>
+Obtiene el UUID del subscriptor (para depuración).
+<pre>UUID getUUID() throws RemoteException;
+</pre>
+</li><li>
+Operación de subscripción. El segundo parámetro indica, si su valor es falso, que el primer parámetro se interpretará como el nombre de un tema, mientras que, si es verdadero, especifica que dicho primer parámetro se procesará como un patrón de tipo <i>glob</i>, causando la subscripción en todos los temas del sistema que encajan en ese patrón. Devuelve el número de subscripciones realizadas.
+<pre>int subscribe(String topic, boolean glob) throws RemoteException;
+</pre>
+</li><li>
+Devuelve el siguiente evento del subscriptor, retornando un valor nulo si no hay ninguno.
+<pre>Event getEvent() throws RemoteException;
+</pre>
+</li><li>
+Devuelve la lista de nombres de tema asociados a ese subscriptor.
+<pre>Collection&lt;String&gt; topicListBySubscriber() throws RemoteException;
+</pre>
+</li><li>
+Operación de baja de una subscripción. Devuelve falso si el tema no existe o no está subscrito a ese tema.
+<pre>boolean unsubscribe(String topic) throws RemoteException;
+</pre>
+</li><li>
+Finaliza la ejecución de un subscriptor. Después de ejecutarse esta operación, si se usa este objeto de tipo subscriptor para invocar uno de sus métodos, se generará una excepción <tt>NoSuchObjectException</tt> puesto que este ya ha completado su ejecución.
+<pre>void exit() throws RemoteException;
+</pre>
+</li></ul>
+
+<h2>Ejecución de pruebas del sistema</h2>
+Aunque todavía no hemos empezado con la funcionalidad, parece conveniente
+explicar desde el principio cómo se realizan las pruebas en esta práctica.
+Nótese que, en caso de disponer de varias máquinas, como ocurre si usa triqui, puede arrancar cada componente en un equipo distinto.
+<p>
+El primer paso es descargar el material de apoyo de la práctica, lo que se puede hacer tanto del Moodle de la asignatura como directamente desde esta URL:
+</p><pre>wget http://laurel.datsi.fi.upm.es/_media/docencia/asignaturas/sd/pubsub-2026.tgz
+</pre>
+El material de apoyo está empaquetado en un fichero TGZ:
+<pre>tar xvfz pubsub-2026.tgz
+</pre>
+Para compilar la práctica, existe un <i>script</i> denominado <tt>./compile.sh</tt> en cada uno de los 3 directorios de la práctica. También se dispone del <i>script</i> <tt>./compile_all.sh</tt> en el directorio raíz de la práctica que va invocando los <i>scripts</i> de compilación de cada directorio en el orden correcto.
+<p>
+En cuanto a la ejecución, vamos a suponer que usamos los distintos nodos de <tt>triqui.fi.upm.es</tt>. Si trabaja en un solo equipo, sustitúyalo por <tt>localhost</tt>.
+</p><p>
+En primer lugar, arrancamos en el mismo equipo el <tt>registry</tt> y el <tt>broker</tt>:
+</p><pre>ssoo@triqui1:pubsub$ cd broker_node/
+ssoo@triqui1:broker_node$ ./start_rmiregistry.sh 54321 &amp;
+ssoo@triqui1:broker_node$ ./execute_broker.sh 54321
+</pre>
+Para probar la práctica, arrancamos el programa de prueba en los distintos nodos de <tt>triqui</tt>, especificando en qué máquina y puerto está ejecutando el <i>registry</i>. Por ejemplo, podemos desplegarlo en <tt>triqui3</tt>:
+<pre>ssoo@triqui3:pubsub$ cd client_node/
+ssoo@triqui3:client_node$ ./execute.sh Test triqui1 54321
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+</pre>
+<h2>Ejemplos</h2>
+Para las pruebas de la funcionalidad de la práctica se usará únicamente el programa <tt>Test</tt> incluido en el directorio <tt>client_node/src/pubsubapps</tt>. En esta sección presentamos el resto de los programas de dicho directorio, que muestran el modo de operación de este sistema.
+Tenga en cuenta que no es necesario usarlos, por lo que se puede saltar directamente esta sección.
+<h3>Pruebas de la gestión de eventos</h3>
+Este primer programa envía cada 3 segundos un evento al tema recibido como último argumento. Nótese que el contenido de un evento es un mapa que contiene parejas clave-valor, tal que cada valor puede ser cualquier tipo de objeto: primitivo, de cualquier clase o incluso una colección.
+<pre>package pubsubapps;
+import java.util.Map;
+import java.util.Date;
+import java.util.Arrays;
+import java.util.UUID;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+import java.util.concurrent.TimeUnit;
+import pubsubcln.Client;
+import pubsub.PubSub;
+import pubsub.Event;
+import pubsub.Subscriber;
+
+class TestPublisher {
+    static public void main(String args[]) {
+        if (args.length!=3) {
+            System.err.println("Usage: TestPublisher registryHost registryPort topic");
+            return;
+        }
+        try {
+            PubSub srv = Client.init(args[0], args[1]);
+	    String topic = args[2];
+            UUID uuid = UUID.randomUUID();
+            int counter=0;
+	    String greetings = "hola", string = "";
+
+            srv.createTopic(topic); // si ya existe, no hace nada
+	    while (true) {
+	        Map&lt;String,Object&gt; content = Map.of(
+                    "campo1", string+=greetings, // un string
+                    "campo2", ++counter, // un entero
+                    "campo3", new Date(), // un objeto
+                    "campo4", Arrays.asList(uuid, "adiós") // una lista
+	        );
+		System.out.println("Publicado evento");
+	        srv.publish(new Event(topic, content));
+                TimeUnit.SECONDS.sleep(3);
+	    }
+        } catch (Exception e) {
+            e.printStackTrace();
+	    System.exit(1);
+        }
+    }
+}
+</pre>
+Este programa se subscribe a los temas recibidos como argumentos e intenta cada 5 segundos recoger los eventos que le corresponden. Nótese que en su iniciación como subscriptor ha indicado que no está interesado en ser notificado de la creación o destrucción de temas.
+<pre>package pubsubapps;
+import java.util.Map;
+import java.util.Date;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+import pubsubcln.Client;
+import pubsub.PubSub;
+import pubsub.Event;
+import pubsub.Subscriber;
+
+class TestSubscriber {
+    static public void main(String args[]) {
+        if (args.length&lt;3) {
+            System.err.println("Usage: TestSubscriber registryHost registryPort topic...");
+            return;
+        }
+        try {
+            PubSub srv = Client.init(args[0], args[1]);
+	    // null: no desea notificaciones de creación/borrado de temas
+	    Subscriber sub = srv.initSubscriber(null);
+	    for (int i=2; i&lt;args.length;i++) {
+	        String topic = args[i];
+                srv.createTopic(topic); // si ya existe, no hace nada
+	        sub.subscribe(topic, false); // no glob
+	    }
+            while (true) {
+	        Event ev;
+	        System.out.println("---- inicio de recogida de eventos");
+	        while ((ev=sub.getEvent())!=null)
+	            System.out.println(ev);
+	        System.out.println("---- fin de recogida de eventos");
+                TimeUnit.SECONDS.sleep(5);
+	    }
+        } catch (Exception e) {
+            e.printStackTrace();
+	    System.exit(1);
+        }
+    }
+}
+</pre>
+El siguiente programa muestra el uso del esquema alternativo de recogida de eventos que sigue un modelo de tipo cola, conviviendo con el modo de operación habitual del editor/subscriptor.
+<pre>package pubsubapps;
+import java.util.Map;
+import java.util.Date;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+import pubsubcln.Client;
+import pubsub.PubSub;
+import pubsub.Event;
+
+class TestConsumer {
+    static public void main(String args[]) {
+        if (args.length!=3) {
+            System.err.println("Usage: TestSConsumerubscriber registryHost registryPort topic");
+            return;
+        }
+        try {
+            PubSub srv = Client.init(args[0], args[1]);
+	    String topic = args[2];
+            srv.createTopic(topic); // si ya existe, no hace nada
+            while (true) {
+	        Event ev;
+	        System.out.println("---- inicio de recogida de eventos");
+                while ((ev=srv.consumeEvent(topic))!=null)
+                    System.out.println(ev);
+	        System.out.println("---- fin de recogida de eventos");
+                TimeUnit.SECONDS.sleep(5);
+	    }
+        } catch (Exception e) {
+            e.printStackTrace();
+	    System.exit(1);
+        }
+    }
+}
+</pre>
+Pueden realizarse pruebas ejecutando en diferentes ventanas los siguientes mandatos:
+<pre>./execute.sh TestSubscriber  localhost 12345 tema1 tema2
+./execute.sh TestSubscriber  localhost 12345 tema2 tema3
+./execute.sh TestPublisher localhost 12345 tema1
+./execute.sh TestPublisher localhost 12345 tema2
+./execute.sh TestPublisher localhost 12345 tema3
+./execute.sh TestConsumer  localhost 12345 tema1
+</pre>
+<h3>Pruebas de notificación de creación y borrado de temas</h3>
+Los ejemplos anteriores muestran prácticamente toda la funcionalidad del sistema pero no ilustran este tipo de notificación que podría ser usada, por ejemplo, por una aplicación de chat para conocer cuando se crean nuevas salas/canales o se destruyen algunas de las existentes.
+<p>
+Este ejemplo crea los temas recibidos como argumentos usando una separación de 3 segundos, pasando, a continuación, a destruirlos siguiendo el mismo ritmo.
+</p><pre>package pubsubapps;
+import java.util.Map;
+import java.util.Date;
+import java.util.Arrays;
+import java.util.UUID;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+import java.util.concurrent.TimeUnit;
+import pubsubcln.Client;
+import pubsub.PubSub;
+import pubsub.Event;
+
+class TestTopicCreate {
+    static public void main(String args[]) {
+        if (args.length&lt;3) {
+            System.err.println("Usage: TestTopicCreate registryHost registryPort topic...");
+            return;
+        }
+        try {
+            PubSub srv = Client.init(args[0], args[1]);
+            for (int i=2; i&lt;args.length; i++) {
+                String topic = args[i];
+                srv.createTopic(topic); 
+		System.out.println("Creado tema " + topic);
+                TimeUnit.SECONDS.sleep(3);
+            }
+            for (int i=2; i&lt;args.length; i++) {
+                String topic = args[i];
+                srv.deleteTopic(topic);
+		System.out.println("Eliminado tema " + topic);
+                TimeUnit.SECONDS.sleep(3);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+	    System.exit(1);
+        }
+    }
+}
+</pre>
+Este programa se inicia obteniendo qué temas existen en el sistema en ese momento para, a continuación, recibir las notificaciones de creación y destrucción de temas.
+<pre>package pubsubapps;
+import java.util.Map;
+import java.util.Date;
+import java.util.Arrays;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+import pubsubcln.Client;
+import pubsub.PubSub;
+import pubsub.Event;
+import pubsub.Subscriber;
+import pubsub.SubscriberCallback;
+
+class TestTopicNotify extends UnicastRemoteObject implements SubscriberCallback {
+    public static final long serialVersionUID=1234567890L;
+    public TestTopicNotify () throws RemoteException {
+    }
+    public void topicAdded(String topic) throws RemoteException {
+        System.out.println("Alta de tema " + topic);
+    }
+    public void topicRemoved(String topic) throws RemoteException {
+        System.out.println("Baja de tema " + topic);
+    }
+    static public void main(String args[]) {
+        if (args.length!=2) {
+            System.err.println("Usage: TestTopicNotify registryHost registryPort");
+            return;
+        }
+        try {
+            PubSub srv = Client.init(args[0], args[1]);
+            // desea notificaciones de creación/borrado de temas
+            Subscriber sub = srv.initSubscriber(new TestTopicNotify());
+            System.out.println("La lista inicial de temas es " + srv.topicList());
+        } catch (Exception e) {
+            e.printStackTrace();
+	    System.exit(1);
+        }
+    }
+}
+</pre>
+Pueden realizarse pruebas ejecutando en diferentes ventanas los siguientes mandatos:
+<pre> ./execute.sh TestTopicCreate  localhost 12345 tema1 tema2 tema3
+ ./execute.sh TestTopicNotify localhost 12345
+</pre>
+<h3>Pruebas de notificación de creación y borrado de temas</h3>
+La otra funcionalidad que falta por presentar es el uso de patrones de tipo <i>glob</i> para la subscripción. En este caso, para simplificar, se propone un único programa que crea los temas recibidos como argumentos y, a continuación, se subscribe al patrón recibido también como argumento.
+<pre>package pubsubapps;
+import java.util.Map;
+import java.util.Date;
+import java.util.Arrays;
+import java.util.UUID;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+import java.util.concurrent.TimeUnit;
+import pubsubcln.Client;
+import pubsub.PubSub;
+import pubsub.Event;
+import pubsub.Subscriber;
+
+class TestGlob {
+    static public void main(String args[]) {
+        if (args.length&lt;4) {
+            System.err.println("Usage: TestGlob registryHost registryPort glob_pattern topic...");
+            return;
+        }
+        try {
+            PubSub srv = Client.init(args[0], args[1]);
+            for (int i=3; i&lt;args.length; i++) {
+                String topic = args[i];
+                srv.createTopic(topic); 
+		System.out.println("Creado tema " + topic);
+            }
+            // null: no desea notificaciones de creación/borrado de temas
+            Subscriber sub = srv.initSubscriber(null);
+            String pattern = args[2];
+            sub.subscribe(pattern, true); // con glob
+            System.out.println("Temas subscritos ");
+            for (String t: sub.topicListBySubscriber())
+                System.out.println(t);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+	    System.exit(1);
+        }
+    }
+}
+</pre>
+Pueden realizarse pruebas ejecutando en diferentes ventanas los siguientes mandatos:
+<pre>./execute.sh TestGlob  localhost 12345 '/nivel1a/*/tema[12]' /nivel1a/nivel2a/tema1 /nivel1a/nivel2a/tema2 /nivel1a/nivel2a/tema3 /nivel1a/nivel2b/nivel3a/tema1 /nivel1a/nivel2b/nivel3a/tema2 /nivel1b/tema1
+./execute.sh TestGlob  localhost 12345 '/nivel1a/**/tema?' /nivel1a/nivel2a/tema1 /nivel1a/nivel2a/tema2 /nivel1a/nivel2a/tema3 /nivel1a/nivel2b/nivel3a/tema1 /nivel1a/nivel2b/nivel3a/tema2 /nivel1b/tema1
+</pre>
+<h2>Fases en el desarrollo de la práctica</h2>
+Se plantean 10 fases con una nota de un punto cada una:
+<ol>
+<li>Primer contacto entre un cliente y el <i>broker</i>.
+</li><li>Creación de temas.
+</li><li>Publicación de eventos con modo de operación de tipo cola.
+</li><li>Alta de un subscriptor y notificaciones de creación de temas.
+</li><li>Subscripción a un tema.
+</li><li>Publicación de eventos con modo de operación de tipo editor/subscriptor.
+</li><li>Subscripción con patrones de tipo <i>glob</i>.
+</li><li>Baja de una subscripción.
+</li><li>Fin de un subscriptor.
+</li><li>Eliminación de un tema.
+</li></ol>
+Nótese que se dejan para las fases finales las operaciones de carácter destructivo (darse de baja de una subscripción, completar la ejecución de un subscriptor y eliminar un tema).
+
+<h2>Fase 1: Primer contacto entre un cliente y el <i>broker</i></h2>
+En esta fase, se plantea únicamente que un cliente pueda contactar con el <i>broker</i>. Para ello, hay que realizar dos acciones:
+<ul>
+<li>En el método <tt>init</tt> del fichero <tt>broker_node/src/broker/Server.java</tt> hay que incluir la lógica para localizar al <i>registry</i> y dar de alta el servicio general.
+</li><li>En el método <tt>init</tt> del fichero <tt>client_node/src/pubsubcln/Client.java</tt> hay que incluir la lógica para localizar al <i>registry</i> y obtener una referencia remota del servicio.
+</li></ul>
+Puede basarse en el ejemplo del servicio de eco suministrado (ficheros <tt>ejemplos_JavaRMI/1_eco/server_node/src/server/EchoServer.java</tt> y <tt>ejemplos_JavaRMI/1_eco/client_node/src/client/EchoClient.java</tt>, respectivamente), usando el nombre de servicio que considere oportuno.
+
+<h3>Pruebas</h3>
+A continuación, se muestra una prueba para comprobar la funcionalidad de este caso. Una vez arrancado el <tt>registry</tt> y el <i>broker</i>, tal como se explicó previamente, ejecutamos el programa de prueba (en la salida que se muestra de la ejecución del programa aparece en negrilla lo que se teclea, mientras que las respuestas se muestran subrayadas). En las pruebas que se indicarán para las distintas fases, para simplificar, se asumirá que se ejecutan en el mismo equipo, pero puede hacerlo en distintas máquinas cambiando <tt>localhost</tt> por el nombre de la máquina donde ejecuta el <tt>registry</tt> y el <i>broker</i>.
+<p>
+Para comprobar que el servicio está operativo, usaremos la operación <tt>getVersion</tt>, que ya está programada.
+</p><pre>$ ./execute.sh Test localhost 54321
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getVersion</b>
+<b><u>getVersion ha devuelto: 1</u></b>
+</pre>
+
+<h2>Fase 2: Creación de temas</h2>
+El <i>broker</i>, dentro del fichero general de servicio (<tt>PubSubImpl.java</tt>), va a gestionar la colección de temas existentes en el sistema. Para ello, requerirá algún tipo de mapa que le permita asociar un nombre de tema con el objeto de tipo <tt>Topic</tt> que corresponde a ese tema.
+<p>
+Como parte de esta fase, que afecta solo al fichero <tt>PubSubImpl.java</tt>, hay que implementar el método <tt>createTopic</tt>, que creará el nuevo tema insertándolo en el mapa, retornando falso en caso de que ya existiera. Además, se debe implementar el método <tt>topicList</tt>, que devuelve una colección con los nombres de los temas existentes. Recuerde que los valores devueltos por los métodos remotos, así como sus parámetros, deben ser serializables. En caso de que se encuentre con que tiene que devolver una colección no serializable, puede <i>envolverla</i> en cualquier tipo estándar de lista, que sí lo es.
+</p><hr>
+<h3>Necesidad de sincronización</h3>
+Los métodos remotos del servicio general pueden ser invocados concurrentemente por varios clientes. Por tanto, para evitar problemas de sincronización, ya están definidos con la cláusula <tt>synchronized</tt>, que asegura que se ejecutan en exclusión mutua.
+<hr>
+
+<h3>Pruebas</h3>
+Vamos a probar las dos operaciones implementadas en esta fase.
+<pre>$ ./execute.sh Test localhost 54321
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Error al crear el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicList</b>
+<b><u>Topic List</u></b>
+<b><u>  Topic tema1  Topic tema2</u></b>
+</pre>
+
+<h2>Fase 3: Publicación de eventos con modo de operación de tipo cola</h2>
+En esta fase ya se contempla la generación y consumo de eventos, pero, por el momento, con un modo de operación de tipo cola. En ella, hay que incluir en la clase <tt>Topic</tt>, que corresponde a un tema, la gestión de una cola de eventos, que permita extraer el primer evento y añadir uno al final, para lo que puede usar el tipo de colección que considere oportuno. Además, debe programar los dos siguientes métodos de <tt>PubSubImpl</tt>:
+<ul>
+<li>El método <tt>publish</tt> publica un evento incorporándolo al final de la cola del tema correspondiente, devolviendo falso si no existe el tema.
+</li><li>El método <tt>consumeEvent</tt> consume el primer evento de la cola del tema especificado, eliminándolo, devolviendo nulo si no hay eventos y generando la excepción <tt>NoSuchObjectException</tt> si no existe el tema. Nótese que no se comporta como un esquema editor/subscriptor, sino, más bien, como un esquema de colas de mensajes. Más adelante implementaremos esa funcionalidad.
+
+</li></ul>
+<hr>
+<h4>Contenido del valor de un campo del evento como Object vs como array de bytes</h4>
+Aunque no afecta al desarrollo de la práctica y no es precisa su lectura, en esta sección se realizan algunas consideraciones sobre el diseño de la clase que representa un evento. Se ha optado por que los valores asociados a cada campo del evento puedan ser objetos de cualquier tipo (es decir, de la clase <tt>Object</tt>). Esto permite enviar objetos de cualquier clase (por ejemplo, un valor de clase <tt>Date</tt> o una lista de objetos de la clase <tt>Date</tt>). Gracias al mecanismo de Java de descarga dinámica de código de clases desde una fuente externa, el <i>broker</i> puede manejar objetos de cuyo código no dispone en su JVM (por ejemplo, un objeto de una clase definida por el cliente). Sin embargo, por motivos de seguridad, esta funcionalidad ha sido eliminada en las últimas versiones de Java, siendo preciso, por tanto, que el código de todas las clases incluidas en eventos esté disponible en la JVM del <i>broker</i>.
+<p>
+Una alternativa habría sido gestionar estos valores de los campos del evento como <tt>arrays</tt> de bytes, realizando explícitamente su serialización.
+</p><hr>
+<h3>Pruebas</h3>
+Para esta prueba se usarán dos clientes identificados por distinto color.
+
+<pre style="color:red;">$ ./execute.sh Test localhost 54321
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>  
+Introduzca el nombre del tema
+<b>noexiste</b>
+<b><u>Error al publicar el evento: topic = &lt;noexiste&gt; content = &lt;{número de evento=0}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>consumeEvent</b>
+Introduzca el nombre del tema
+<b>noexiste</b>
+<b><u>recibida la excepción java.rmi.NoSuchObjectException: topic does not exist</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema&gt; content = &lt;{número de evento=1}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema&gt; content = &lt;{número de evento=2}&gt;</u></b>
+</pre>
+A continuación, ejecutamos un segundo cliente.
+<pre style="color:blue;">$ ./execute.sh Test localhost 54321
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>consumeEvent</b>
+Introduzca el nombre del tema
+<b>tema</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema&gt; content = &lt;{número de evento=1}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>consumeEvent</b>
+Introduzca el nombre del tema
+<b>tema</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema&gt; content = &lt;{número de evento=2}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>consumeEvent</b>
+Introduzca el nombre del tema
+<b>tema</b>
+<b><u>No ha devuelto evento</u></b>
+</pre>
+
+<h2>Fase 4: Alta de un subscriptor y notificaciones de creación de temas</h2>
+Un programa que quiera realizar el papel de subscriptor tiene que darse de alta en el <i>broker</i> con ese rol antes de poder subscribirse a cualquier tema existente. En ese proceso de alta, el programa puede especificar el objeto de tipo <i>callback</i> a través del que, en caso de especificarlo, recibirá las notificaciones de creación y destrucción de temas.
+<p>
+En el fichero <tt>PubSubImpl</tt> hay que incluir la gestión de una lista de subscriptores, que se crean usando el patrón de factoría de objetos remotos, y programar los métodos:
+</p><ul>
+<li><tt>initSubscriber</tt>: Esta operación da de alta un subscriptor, especificando como parámetro el objeto de tipo <i>callback</i> que se usará para notificarle la creación y destrucción de temas. Un valor nulo en ese parámetro indica que el subscriptor no está interesado en ese tipo de notificaciones. Para implementar esta operación, debe crear un subscriptor pasándole la información requerida por su constructor (una referencia al objeto que proporciona el servicio general, para poder acceder desde el subscriptor a dichos servicios, y el parámetro recibido por el propio método) e incorporarlo a la lista de subscriptores.
+</li><li><tt>subscriberList</tt> devuelve directamente la lista de subscriptores dados de alta en el sistema.
+</li></ul>
+Además, se debe completar el método <tt>createTopic</tt> para realizar la notificación, usando el mecanismo de <i>callback</i>, de que se ha creado un nuevo tema a todos los subscriptores que hayan indicado su interés, invocando, para ello, el método <tt>topicAdded</tt> de cada subscriptor interesado. Nótese que esta funcionalidad requiere la colaboración de las clases <tt>PubSubImpl</tt>, donde está definido este método, y <tt>SubscriberImpl</tt>, en la que se almacena la referencia al objeto de tipo <i>callback</i> que permite notificarle a ese subscriptor la creación de un tema. 
+<h3>Pruebas</h3>
+Para esta prueba se usarán dos clientes identificados por distinto color.
+<p>Iniciamos el primer cliente.
+</p><pre style="color:red;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor fb487511-922b-4aa0-a436-7829505699ae</u></b>
+</pre>
+Arrancamos el segundo cliente.
+<pre style="color:blue;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor 6e1ccf26-50bd-4284-a1a4-27bdcb605fa2</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberList</b>
+<b><u>Subscriber List</u></b>
+<b><u>  Subscriber fb487511-922b-4aa0-a436-7829505699ae</u></b>
+<b><u>  Subscriber 6e1ccf26-50bd-4284-a1a4-27bdcb605fa2</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Notificación de alta de tema tema1</u></b>
+<b><u>Se ha creado el tema</u></b>
+</pre>
+En la ventana del primer cliente debe haber aparecido el siguiente mensaje:
+<pre style="color:red;"><b><u>Notificación de alta de tema tema1</u></b>
+</pre>
+
+<h2>Fase 5: Subscripción a un tema</h2>
+Esta funcionalidad requiere incorporar a la clase <tt>Topic</tt> la gestión de una lista de subscriptores que se han dado de alta en ese tema. Además, como se verá en fases posteriores, es necesario gestionar en <tt>SubscriberImpl</tt> una lista de los nombres de temas a los que está subscrito.
+<p>
+Hay que implementar el método <tt>subscribe</tt> en <tt>SubscriberImpl</tt>, que añade a ese subscriptor a la lista del tema al que se subscribe, incorporando el nombre del tema a la lista del propio subscriptor.
+</p><p>Por último, hay que retornar dos listas:
+</p><ul>
+<li>Se tiene que programar el método <tt>topicListBySubscriber</tt> en <tt>SubscriberImpl</tt> para devolver directamente la lista de nombres de tema subscriptos por ese subscriptor.
+</li><li>Se tiene que programar el método <tt>subscriberListByTopic</tt> en <tt>PubSubImpl</tt> para devolver directamente la lista de subscriptores de ese tema, retornando un valor nulo en caso de que no exista el tema.
+</li></ul>
+<h3>Pruebas</h3>
+Para esta prueba se usarán dos clientes identificados por distinto color.
+<p>Iniciamos el primer cliente.
+</p><pre style="color:red;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+        getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+        getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+        subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+        getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+        getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+        subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor aeafbda3-c833-4c65-9657-4324b8cb7c18</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>noexiste</b>
+<b><u>ha devuelto el valor 0</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor 0</u></b>
+</pre>
+Arrancamos el segundo cliente.
+<pre style="color:blue;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor f2ec0a9f-918b-4e2a-af8d-d580540e1956</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberListByTopic</b>
+Introduzca el nombre del tema
+<b>noexiste</b>
+<b><u>devuelve un valor nulo</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberListByTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Subscriber List </u></b>
+<b><u>  Subscriber aeafbda3-c833-4c65-9657-4324b8cb7c18</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberListByTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Subscriber List </u></b>
+<b><u>  Subscriber aeafbda3-c833-4c65-9657-4324b8cb7c18</u></b>
+<b><u>  Subscriber f2ec0a9f-918b-4e2a-af8d-d580540e1956</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+<b><u>  Topic tema1  Topic tema2</u></b>
+</pre>
+<h2>Fase 6: Publicación de eventos con modo de operación de tipo editor/subscriptor</h2>
+En esta fase nuevamente hay que incluir la gestión de una cola de eventos, pero esta vez asociada a un subscriptor (<tt>SubscriberImpl</tt>), viéndose afectados dos métodos:
+<ul>
+<li><tt>publish</tt> de <tt>PubSubImpl.java</tt>, que debe extenderse para encolar el evento en todos los subscritos a ese tema.
+</li><li><tt>getEvent</tt> de <tt>SubscriberImpl</tt> que devuelve el primer evento asociado con ese subscriptor, retornando un valor nulo en caso de no haber ninguno.
+</li></ul>
+<h3>Pruebas</h3>
+Para esta prueba se usarán tres clientes identificados por distinto color.
+<p>Iniciamos el primer cliente.
+</p><pre style="color:red;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema3</b>
+<b><u>Se ha creado el tema</u></b>
+</pre>
+Arrancamos el segundo cliente.
+<pre style="color:blue;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor 82423046-0f2f-4a88-bcd0-4fba1b40f32f</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>No ha devuelto evento</u></b>
+</pre>
+Por último, activamos el tercer cliente:
+<pre style="color:green;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor df4b6004-079c-403f-bdab-028b8983e618</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema3</b>
+<b><u>ha devuelto el valor 1</u></b>
+</pre>
+Volvemos al  primer cliente.
+<pre style="color:red;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema1&gt; content = &lt;{número de evento=0}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema2&gt; content = &lt;{número de evento=1}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema3</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema3&gt; content = &lt;{número de evento=2}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema1&gt; content = &lt;{número de evento=3}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema2&gt; content = &lt;{número de evento=4}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>publish</b>
+Introduzca el nombre del tema
+<b>tema3</b>
+<b><u>Se ha publicado el evento: topic = &lt;tema3&gt; content = &lt;{número de evento=5}&gt;</u></b>
+</pre>
+Retornamos al segundo cliente.
+<pre style="color:blue;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema1&gt; content = &lt;{número de evento=0}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema2&gt; content = &lt;{número de evento=1}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema1&gt; content = &lt;{número de evento=3}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema2&gt; content = &lt;{número de evento=4}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>No ha devuelto evento</u></b>
+</pre>
+Por último, vamos de nuevo al tercer cliente:
+<pre style="color:green;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema2&gt; content = &lt;{número de evento=1}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema3&gt; content = &lt;{número de evento=2}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema2&gt; content = &lt;{número de evento=4}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema3&gt; content = &lt;{número de evento=5}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getEvent</b>
+<b><u>No ha devuelto evento</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>consumeEvent</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema1&gt; content = &lt;{número de evento=0}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>consumeEvent</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha recibido el evento: topic = &lt;tema1&gt; content = &lt;{número de evento=3}&gt;</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>consumeEvent</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>No ha devuelto evento</u></b>
+</pre>
+<h2>Fase 7: Subscripción con patrones de tipo <i>glob</i></h2>
+Esta funcionalidad solo afecta al método <tt>subscribe</tt> de <tt>SubscribeImpl</tt> en el que hay que programar el caso de que se especifique la opción <i>glob</i>.
+<p>
+Para implementar esta funcionalidad, se recomienda usar la interfaz <tt>PathMatcher</tt>, que requiere obtener una instancia con el patrón (<tt>getPathMatcher</tt> especificando un patrón que comienza por <tt>"glob:"</tt>) para luego usar el método de comparación (<tt>matches</tt>) con cada tema existente convertido en un <i>path</i> (método <tt>get</tt> de <tt>Paths</tt>). Recuerde que el método <tt>subscribe</tt> debe retornar el número de subscripciones realizadas.
+</p><h3>Pruebas</h3>
+Para esta prueba se usarán tres clientes identificados por distinto color.
+<p>Iniciamos el primer cliente que va a crear los temas.
+</p><pre style="color:red;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b><u>/nivel1a/nivel2a/tema1</u></b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b><u>/nivel1a/nivel2a/tema2</u></b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b><u>/nivel1a/nivel2a/tema3</u></b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b><u>/nivel1a/nivel2b/nivel3a/tema1</u></b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b><u>/nivel1a/nivel2b/nivel3a/tema2</u></b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b><u>/nivel1b/tema1</u></b>
+<b><u>Se ha creado el tema</u></b>
+</pre>
+Un segundo cliente realiza la subscripción con un patrón:
+<pre style="color:blue;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor 37276e14-0981-45d1-b492-d87a6c07d685</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribeGlob</b>
+Introduzca el nombre del tema
+<b>/nivel1a/*/tema[12]</b>
+<b><u>ha devuelto el valor 2</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+<b><u>  Topic /nivel1a/nivel2a/tema2  Topic /nivel1a/nivel2a/tema1</u></b>
+</pre>
+Un tercer cliente hace también una subscripción con un patrón:
+<pre style="color:green;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor ec0fccf8-9860-4ef9-9ccc-12d6bf19b5d8</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribeGlob</b>
+Introduzca el nombre del tema
+<b>/nivel1a/**/tema?</b>
+<b><u>ha devuelto el valor 5</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+<b><u>  Topic /nivel1a/nivel2a/tema2  Topic /nivel1a/nivel2b/nivel3a/tema1  Topic /nivel1a/nivel2a/tema1  Topic /nivel1a/nivel2b/nivel3a/tema2  Topic /nivel1a/nivel2a/tema3</u></b>
+</pre>
+
+<h2>Fase 8: Baja de una subscripción (<tt>unsubscribe</tt>)</h2>
+Se trata de la operación complementaria a la subscripción.
+<h3>Pruebas</h3>
+Para esta prueba se usarán dos clientes identificados por distinto color.
+<p>Iniciamos el primer cliente que va a crear los temas.
+</p><pre style="color:red;">$ ./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha creado el tema</u></b>
+</pre>
+Arrancamos el segundo cliente.
+<pre style="color:blue;">$ ./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor 26363eed-1c69-4070-8707-893971f30845</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>unsubscribe</b>
+Introduzca el nombre del tema
+<b>noexiste</b>
+<b><u>ha devuelto el valor false</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>unsubscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor false</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribeGlob</b>
+Introduzca el nombre del tema
+<b>tema?</b>
+<b><u>ha devuelto el valor 2</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+<b><u>  Topic tema1  Topic tema2</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>unsubscribe</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>ha devuelto el valor true</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+<b><u>  Topic tema1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>unsubscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor true</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+</pre>
+<h2>Fase 9: Fin de un subscriptor</h2>
+El método <tt>exit</tt> de <tt>SubscriberImpl</tt> termina la sesión de un subscriptor. Para ello, debe borrarse de todos los temas en los que está subscrito y eliminarse de la lista de subscriptores que gestiona <tt>PubSubImpl</tt>.
+Nótese que, a pesar de haberse eliminado sus referencias en el <i>broker</i>, el objeto subscriptor seguirá existiendo mientras el cliente mantenga una referencia al mismo. Por tanto, de manera similar a lo que ocurre con su descriptor cuando se cierra el fichero, después de ejecutarse esta operación de finalización del subscriptor, si se usa este objeto de tipo subscriptor para invocar uno de sus métodos, se debe generar una excepción <tt>NoSuchObjectException</tt> puesto que este ya ha completado su ejecución.
+<p>
+Dado que un subscriptor que expresó su interés en ser notificado cuando se crean nuevos temas puede no estar accesible en el momento de la notificación (por ejemplo, puede haberse caído), para evitar un error en el <i>broker</i>, en <tt>createTopic</tt> hay que capturar la excepción correspondiente y seguir notificando al resto de los subscriptores completándose este método.
+</p><h3>Pruebas</h3>
+Para esta prueba se usarán tres clientes identificados por distinto color.
+<p>Iniciamos el primer cliente.
+</p><pre style="color:red;">$ ./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha creado el tema</u></b>
+</pre>
+<p>Arrancamos el segundo cliente.
+</p><pre style="color:blue;">$ ./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor a2e11537-d5aa-4159-b789-6ba6f9950e4e</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>exit</b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>getUUID</b>
+<b><u>recibida la excepción java.rmi.NoSuchObjectException: this subscriber has already finished</u></b>
+</pre>
+Volvemos al primer cliente.
+<pre style="color:red;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberList</b>
+<b><u>Subscriber List</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberListByTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Subscriber List</u></b>
+</pre>
+Arrancamos el tercer cliente, que termina después de iniciarse como subscriptor.
+<pre style="color:green;">./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor 5b74caf4-933f-4b54-a6ca-f2e56c2622a6</u></b>
+</pre>
+Volvemos de nuevo al primer cliente para ver que crea un tema correctamente a pesar de que hay un subscriptor caído.
+<pre style="color:red;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha creado el tema</u></b>
+</pre>
+
+<h2>Fase 10: Eliminación de un tema</h2>
+El método <tt>deleteTopic</tt> de <tt>PubSubImpl</tt>, por cada uno de los subscriptores presentes en el sistema, debe realizar la notificación de que el tema ha sido eliminado. Además, debe cancelar la subscripción de todos los subscriptores asociados a ese tema.
+<p>
+Dado que un subscriptor que expresó su interés en ser notificado cuando se eliminan temas existentes puede no estar accesible en el momento de la notificación (por ejemplo, puede haberse caído), para evitar un error en el <i>broker</i>, en <tt>deleteTopic</tt> hay que capturar la excepción correspondiente y seguir notificando al resto de los subscriptores completándose este método.
+</p><h3>Pruebas</h3>
+Para esta prueba se usarán tres clientes identificados por distinto color.
+<p>Iniciamos el primer cliente.
+</p><pre style="color:red;">$ ./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha creado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>createTopic</b>
+Introduzca el nombre del tema
+<b>tema3</b>
+<b><u>Se ha creado el tema</u></b>
+</pre>
+<p>Arrancamos el segundo cliente.
+</p><pre style="color:blue;">$ ./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor 864317d2-2b0f-4a7b-a0a4-525e348e32f2</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor 1</u></b>
+</pre>
+<p>Activamos el tercer cliente.
+</p><pre style="color:green;">$ ./execute.sh Test localhost 12345
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>initSubscriber</b>
+<b><u>Se ha iniciado el subscriptor ed966480-d907-4bc1-9828-c8b49ec94f92</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>ha devuelto el valor 1</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscribe</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>ha devuelto el valor 1</u></b>
+</pre>
+Volvemos al primer cliente.
+<pre style="color:red;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberListByTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Subscriber List</u></b>
+<b><u>  Subscriber 864317d2-2b0f-4a7b-a0a4-525e348e32f2</u></b>
+<b><u>  Subscriber ed966480-d907-4bc1-9828-c8b49ec94f92</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberListByTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Subscriber List</u></b>
+<b><u>  Subscriber ed966480-d907-4bc1-9828-c8b49ec94f92</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>deleteTopic</b>
+Introduzca el nombre del tema
+<b>noexiste</b>
+<b><u>Error al eliminar el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>deleteTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>Se ha eliminado el tema</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>topicList</b>
+<b><u>Topic List</u></b>
+<b><u> Topic tema3  Topic tema2 </u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>subscriberListByTopic</b>
+Introduzca el nombre del tema
+<b>tema1</b>
+<b><u>devuelve un valor nulo</u></b>
+Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>deleteTopic</b>
+Introduzca el nombre del tema
+<b>tema2</b>
+<b><u>Se ha eliminado el tema</u></b>
+</pre>
+Volvemos al segundo cliente.
+<pre style="color:blue;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>Notificación de baja de tema tema1</b>
+<b>Notificación de baja de tema tema2</b>
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+</pre>
+Retornamos al tercer cliente y <b>nos salimos del programa</b>.
+<pre style="color:green;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>Notificación de baja de tema tema1</b>
+<b>Notificación de baja de tema tema2</b>
+<b>topicListBySubscriber</b>
+<b><u>Topic List</u></b>
+</pre>
+Volvemos de nuevo al primer cliente.
+<pre style="color:red;">Introduzca operacion (Ctrl-D para terminar)
+	getVersion|createTopic|topicList|publish|consumeEvent|initSubscriber|
+	getUUID|subscriberList|subscribe|subscriberListByTopic|getEvent|
+	subscribeGlob|topicListBySubscriber|unsubscribe|exit|deleteTopic
+<b>deleteTopic</b>
+Introduzca el nombre del tema
+<b>tema3</b>
+<b><u>Se ha eliminado el tema</u></b>
+</pre>
+Retornamos de nuevo al segundo cliente.
+<pre style="color:blue;"><b><u>Notificación de baja de tema tema3</u></b>
+</pre>
+<p></p><h2>Entrega de la práctica</h2>
+Se realizará en la máquina <tt>triqui</tt>, usando el mandato:
+<pre>entrega.sd pubsub.2026
+</pre>
+<p>
+Este mandato recogerá los siguientes ficheros:
+</p><ul>
+<li><tt>autores.txt</tt>
+Fichero con los datos de los autores con este formato:
+<pre>DNI APELLIDOS NOMBRE MATRÍCULA
+</pre>
+</li><li><tt>client_node/src/pubsubcln/Client.java</tt>
+</li><li><tt>broker_node/src/broker/Server.java</tt>
+</li><li><tt>broker_node/src/broker/PubSubImpl.java</tt>
+</li><li><tt>broker_node/src/broker/SubscriberImpl.java</tt>
+</li><li><tt>broker_node/src/broker/Topic.java</tt>
+</li></ul>
+
+</body></html>
